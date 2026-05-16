@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SolCoruña — Terrazas al sol en A Coruña ahora mismo</title>
+  <meta name="description" content="¿Dónde hay sol ahora en A Coruña? Encuentra terrazas al sol en tiempo real. Sombras calculadas edificio por edificio." />
+  <meta name="keywords" content="terrazas sol A Coruña, bares sol coruña, terraza soleada coruña, dónde tomar algo sol coruña" />
+  <meta property="og:title" content="SolCoruña — ¿Dónde hay sol ahora en A Coruña?" />
+  <meta property="og:description" content="Terrazas al sol en tiempo real. Sombras calculadas edificio por edificio para cualquier hora." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="theme-color" content="#050c1e" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+  <!--
+  ╔════════════════════════════════════════════════════════════╗
+  ║  PARA ACTIVAR EL MAPA:                                     ║
+  ║  1. Ve a console.cloud.google.com                          ║
+  ║  2. Activa Maps JavaScript API + Places API                ║
+  ║  3. Reemplaza AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ con tu clave                  ║
+  ║                                                            ║
+  ║  PARA EL BOTÓN DE CAÑA:                                    ║
+  ║  Crea cuenta en ko-fi.com → reemplaza angelgongar           ║
+  ╚════════════════════════════════════════════════════════════╝
+  -->
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ&libraries=places&callback=initMap&loading=async">
+  </script>
+  <style>
+    /* ═══════════════════════════════
+       BLANQUIAZUL PALETTE
+       Azul Coruña + Blanco + Dorado solar
+    ═══════════════════════════════ */
+    :root {
+      --bg:       #050c1e;              /* noche atlántica */
+      --side:     #07102a;              /* sidebar azul marino */
+      --panel:    #091430;              /* panel inferior */
+      --p2:       #0c1838;              /* panel detalle */
+      --surf:     rgba(30,80,200,.07);  /* superficie azul tenue */
+      --bord:     rgba(50,110,230,.18); /* borde blanquiazul */
+      --bord2:    rgba(255,255,255,.08);/* borde blanco tenue */
+
+      /* Blanquiazul */
+      --azul:     #2060d0;              /* azul Deportivo */
+      --azul-l:   #4a8aff;              /* azul claro */
+      --azul-d:   #1040a0;              /* azul oscuro */
+      --azul-g:   rgba(32,96,208,.2);   /* brillo azul */
+      --blanco:   #e8f2ff;              /* blanco atlántico */
+
+      /* Sol dorado (marcadores + activos) */
+      --sun:      #f4be1e;
+      --sunl:     #ffe97a;
+      --sund:     #c08800;
+      --glow:     rgba(244,190,30,.28);
+
+      /* Texto */
+      --txt:      #dce8ff;              /* blanco azulado */
+      --mut:      rgba(200,218,255,.42);
+      --dim:      rgba(200,218,255,.18);
+
+      --grn: #5cb88a; --red: #e05f5f;
+      --sw: 290px;
+    }
+
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html{height:100%;-webkit-text-size-adjust:100%}
+    body{height:100%;overflow:hidden;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+    button{cursor:pointer;border:none;background:none;font-family:inherit;color:inherit}
+    a{text-decoration:none;color:inherit}
+
+    /* ── App shell ── */
+    #app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+    #mapwrap{flex:1;position:relative;min-height:0;overflow:hidden}
+    #map{width:100%;height:100%}
+
+    /* ── Sidebar / bottom panel ── */
+    #aside{
+      background:var(--side);
+      /* línea azul en el borde superior — el detalle blanquiazul */
+      border-top:2px solid var(--azul);
+      padding:14px 18px max(24px,env(safe-area-inset-bottom));
+      flex-shrink:0;display:flex;flex-direction:column;
+    }
+    /* Logo dentro del sidebar (solo desktop) */
+    #aside-logo{display:none}
+
+    /* ── Top bar ── */
+    #topbar{
+      position:absolute;top:0;left:0;right:0;z-index:20;
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 16px;pointer-events:none;
+    }
+    #logo{
+      pointer-events:auto;
+      display:flex;align-items:center;gap:9px;
+      background:rgba(5,12,30,.92);
+      border:1px solid var(--bord);
+      border-radius:14px;padding:9px 14px;
+      backdrop-filter:blur(20px) saturate(1.5);
+      -webkit-backdrop-filter:blur(20px) saturate(1.5);
+      box-shadow:0 0 0 1px rgba(32,96,208,.15) inset;
+    }
+    #logo-txt{font-family:'Fraunces',serif;font-size:16px;font-weight:900;letter-spacing:-.3px}
+    /* Sol en blanco, Coruña en azul Deportivo */
+    #logo-txt .w{color:var(--blanco)}
+    #logo-txt .b{color:var(--azul-l)}
+
+    #btn-s{
+      pointer-events:auto;
+      display:flex;align-items:center;gap:5px;
+      background:var(--sun);color:#000;
+      padding:10px 16px;border-radius:24px;
+      font-size:13px;font-weight:600;
+      box-shadow:0 4px 22px var(--glow),0 1px 0 rgba(255,255,255,.25) inset;
+      transition:transform .12s,box-shadow .12s;
+    }
+    #btn-s:active{transform:scale(.91);box-shadow:none}
+
+    /* Geo button */
+    #btn-geo{
+      position:absolute;right:14px;z-index:20;
+      width:44px;height:44px;border-radius:50%;
+      background:rgba(5,12,30,.92);
+      border:1px solid var(--bord);
+      backdrop-filter:blur(12px);
+      display:flex;align-items:center;justify-content:center;
+      font-size:18px;transition:transform .1s;
+      color:var(--azul-l);
+    }
+    #btn-geo:active{transform:scale(.9)}
+
+    /* ── Loading ── */
+    #loading{
+      position:absolute;inset:0;z-index:100;
+      background:var(--bg);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+    }
+    #load-logo{
+      font-family:'Fraunces',serif;
+      font-size:56px;font-weight:900;letter-spacing:-3px;line-height:1;
+    }
+    #load-logo .w{color:var(--blanco)}
+    #load-logo .b{color:var(--azul-l)}
+    #load-sub{color:var(--mut);font-size:14px;text-align:center}
+
+    /* Torre de Hércules blanquiazul */
+    .spin{width:32px;height:32px;border:3px solid var(--azul-g);border-top-color:var(--azul-l);border-radius:50%;animation:spin .8s linear infinite}
+    .faro{width:48px;height:52px;position:relative;flex-shrink:0}
+    /* Base: franjas blanquiazules */
+    .fb{
+      position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+      width:16px;height:32px;
+      background:repeating-linear-gradient(180deg, var(--azul) 0px, var(--azul) 6px, var(--blanco) 6px, var(--blanco) 12px);
+      border-radius:3px 3px 2px 2px;
+    }
+    .ft{position:absolute;bottom:32px;left:50%;transform:translateX(-50%);width:10px;height:11px;background:var(--azul);border-radius:2px 2px 1px 1px}
+    /* Luz dorada del faro */
+    .fr{position:absolute;bottom:40px;left:50%;width:2px;height:8px;background:var(--sunl);border-radius:1px;transform-origin:bottom center;transform:translateX(-50%);animation:ray 1.8s ease-in-out infinite}
+    .fr:nth-child(2){transform:translateX(-50%) rotate(-40deg);animation-delay:.35s}
+    .fr:nth-child(3){transform:translateX(-50%) rotate(40deg);animation-delay:.7s}
+    @keyframes ray{0%,100%{opacity:.2;height:8px}50%{opacity:1;height:14px}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    #nokey{position:absolute;top:76px;left:50%;transform:translateX(-50%);z-index:30;white-space:nowrap;background:rgba(244,190,30,.1);border:1px solid rgba(244,190,30,.3);border-radius:10px;padding:8px 14px;font-size:12px;font-weight:500;display:none}
+
+    /* ── Markers ── */
+    .mk{position:absolute;border-radius:50%;transform:translate(-50%,-50%);cursor:pointer;transition:transform .1s;pointer-events:auto}
+    .mk:active{transform:translate(-50%,-50%) scale(.84)!important}
+    .mk-sun{background:radial-gradient(circle at 36% 33%,var(--sunl),var(--sun) 55%,var(--sund));box-shadow:0 0 0 5px rgba(244,190,30,.18),0 3px 16px rgba(244,190,30,.55)}
+    /* Sombra: azul tenue (blanquiazul) */
+    .mk-shade{background:transparent;border:1.5px solid rgba(100,150,255,.35)}
+    .mk-shade::after{content:'';position:absolute;inset:0;margin:auto;width:5px;height:5px;border-radius:50%;background:rgba(100,150,255,.4)}
+
+    /* ── Controles (dentro de #aside) ── */
+    .trow{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
+    #tdisp{font-family:'Fraunces',serif;font-size:46px;font-weight:700;letter-spacing:-2.5px;line-height:1;color:var(--blanco)}
+    #btn-a{color:var(--mut);font-size:12px;font-weight:600;letter-spacing:.8px;text-transform:uppercase}
+
+    /* Pill: dorado cuando hay sol, azul de noche */
+    #pill{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:13px;background:var(--sun);color:#000;transition:background .3s,color .3s}
+    #pill.night{background:var(--azul-d);color:var(--azul-l)}
+
+    /* Slider: azul track, dorado progreso */
+    #sl{-webkit-appearance:none;appearance:none;width:100%;height:3px;border-radius:2px;background:linear-gradient(to right,var(--sun) var(--p,50%),rgba(50,100,220,.25) 0);outline:none;cursor:pointer;margin-bottom:6px}
+    #sl::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:var(--blanco);box-shadow:0 1px 8px rgba(0,0,0,.55),0 0 0 2px var(--azul-g)}
+    #sl-l{display:flex;justify-content:space-between;color:var(--dim);font-size:11px;margin-bottom:12px}
+
+    /* Quick buttons: azul tinte en normal, dorado en activo */
+    #qrow{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none}
+    #qrow::-webkit-scrollbar{display:none}
+    .qb{
+      flex-shrink:0;white-space:nowrap;
+      background:rgba(30,80,200,.1);
+      border:1px solid var(--bord);
+      color:var(--txt);padding:8px 16px;border-radius:20px;
+      font-size:13px;font-weight:500;font-family:inherit;
+      transition:background .12s,border-color .12s;
+    }
+    .qb:hover{background:rgba(30,80,200,.18);border-color:var(--azul-l)}
+    .qb.on{background:var(--sun);border-color:var(--sun);color:#000;font-weight:700}
+
+    /* ── Botón caña ── */
+    #cana-wrap{margin-top:16px}
+    #btn-cana{
+      display:flex;align-items:center;gap:7px;
+      color:var(--mut);font-size:12px;font-weight:500;
+      padding:9px 12px;border-radius:10px;
+      border:1px solid var(--bord2);background:var(--surf);
+      transition:color .15s,border-color .15s;width:100%;
+    }
+    #btn-cana:hover{color:var(--txt);border-color:var(--bord)}
+
+    #aside-foot{display:none}
+
+    /* ── Detail panel ── */
+    #detail{
+      position:absolute;bottom:0;left:0;right:0;z-index:50;
+      background:var(--p2);
+      border-radius:20px 20px 0 0;
+      /* línea blanquiazul en el borde superior */
+      border-top:2px solid var(--azul);
+      padding:0 22px max(48px,env(safe-area-inset-bottom));
+      max-height:84vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+      transform:translateY(110%);
+      transition:transform .34s cubic-bezier(.32,.72,0,1);
+      will-change:transform;
+    }
+    #detail.open{transform:translateY(0)}
+    .dh{width:36px;height:4px;background:var(--bord);border-radius:2px;margin:14px auto 18px}
+    #dcls{position:absolute;top:14px;right:16px;width:30px;height:30px;border-radius:50%;background:var(--surf);border:1px solid var(--bord);font-size:13px;display:flex;align-items:center;justify-content:center}
+    #dphoto{height:160px;border-radius:14px;overflow:hidden;background:rgba(20,60,160,.2);background-size:cover;background-position:center;margin-bottom:16px}
+
+    /* Neighborhood label: azul */
+    #dtype{color:var(--azul-l);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px}
+    #dname{font-family:'Fraunces',serif;font-size:28px;font-weight:900;letter-spacing:-.5px;line-height:1.1;margin-bottom:4px;color:var(--blanco)}
+    #daddr{color:var(--mut);font-size:13px;margin-bottom:12px}
+    #drating{display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:13px}
+    .stars{color:var(--sun);letter-spacing:1px;font-size:12px}
+    #dstatus{font-family:'Fraunces',serif;font-size:24px;font-weight:700;margin-bottom:5px;color:var(--blanco)}
+    #ddesc{color:var(--mut);font-size:13px;line-height:1.6;margin-bottom:20px}
+
+    .slbl{color:var(--dim);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px}
+    #drhythm{height:28px;display:flex;overflow:hidden;border-radius:6px;background:rgba(30,80,200,.1);margin-bottom:6px}
+    .rs{flex:1}.rs.s{background:rgba(244,190,30,.88)}.rs.now{background:var(--azul-l);flex:none;width:2px}
+    .rticks{display:flex;justify-content:space-between;color:var(--dim);font-size:10px;margin-bottom:20px}
+
+    #dgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}
+    .dc{background:rgba(30,80,200,.08);border:1px solid var(--bord);border-radius:12px;padding:12px}
+    .dcl{color:var(--mut);font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+    .dcv{font-size:14px;font-weight:600;color:var(--blanco)}
+
+    #dact{display:flex;gap:8px}
+    /* Botón primario: azul blanquiazul (no dorado — el dorado es del sol) */
+    .da-p{flex:1;background:var(--azul);color:#fff;padding:14px;border-radius:12px;font-size:14px;font-weight:700;font-family:inherit;transition:background .15s}
+    .da-p:hover{background:var(--azul-l)}
+    .da-s{background:var(--surf);border:1px solid var(--bord);color:var(--txt);padding:14px 18px;border-radius:12px;font-size:14px;font-family:inherit}
+
+    /* ════════════════════════════════
+       DESKTOP  ≥ 768px
+    ════════════════════════════════ */
+    @media (min-width: 768px) {
+      #app{flex-direction:row}
+
+      /* Sidebar blanquiazul */
+      #aside{
+        order:-1;width:var(--sw);flex-shrink:0;
+        border-top:none;
+        /* franja vertical azul a la derecha del sidebar */
+        border-right:2px solid var(--azul);
+        padding:24px 20px 20px;
+        overflow-y:auto;justify-content:flex-start;
+        /* sutil gradiente de arriba hacia abajo */
+        background:linear-gradient(180deg, rgba(8,20,60,.95) 0%, var(--side) 100%);
+      }
+
+      #aside-logo{
+        display:flex;align-items:center;gap:9px;
+        margin-bottom:24px;padding-bottom:20px;
+        border-bottom:1px solid var(--bord);
+        flex-shrink:0;
+      }
+      #aside-logo-txt{font-family:'Fraunces',serif;font-size:20px;font-weight:900;letter-spacing:-.4px}
+      #aside-logo-txt .w{color:var(--blanco)}
+      #aside-logo-txt .b{color:var(--azul-l)}
+
+      /* Ocultar logo del topbar en desktop */
+      #logo{display:none}
+      #topbar{justify-content:flex-end}
+
+      #tdisp{font-size:42px;letter-spacing:-2px}
+      #qrow{flex-wrap:wrap;overflow-x:visible}
+      .qb{flex-shrink:0}
+
+      #cana-wrap{margin-top:auto;padding-top:20px}
+      #aside-foot{
+        display:block;margin-top:12px;
+        color:var(--dim);font-size:11px;line-height:1.5;
+      }
+
+      #btn-geo{bottom:20px!important;right:16px}
+
+      /* Detail: card deslizante desde la derecha */
+      #detail{
+        left:auto;right:16px;bottom:auto;top:64px;
+        width:360px;max-height:calc(100dvh - 80px);
+        border-radius:20px;
+        border:1px solid var(--bord);
+        border-top:2px solid var(--azul);
+        transform:translateX(calc(100% + 24px));
+        transition:transform .34s cubic-bezier(.32,.72,0,1);
+      }
+      #detail.open{transform:translateX(0)}
+      .dh{display:none}
+      #detail{padding-top:20px}
+    }
+
+    @media (min-width:1200px){
+      :root{--sw:310px}
+      #detail{width:400px}
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- MAP AREA -->
+  <div id="mapwrap">
+    <div id="map"></div>
+
+    <div id="topbar">
+      <div id="logo">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <!-- Torre de Hércules: franjas blanquiazules -->
+          <rect x="6.5" y="11" width="7" height="7.5" rx="1.2" fill="#2060d0"/>
+          <rect x="6.5" y="13.5" width="7" height="2" fill="#e8f2ff"/>
+          <rect x="7.5" y="6" width="5" height="6" rx="1" fill="#2060d0"/>
+          <rect x="7.5" y="8" width="5" height="2" fill="#e8f2ff" opacity=".7"/>
+          <rect x="8.5" y="1.5" width="3" height="5.5" rx="1" fill="#2060d0"/>
+          <rect x="5.5" y="18.5" width="9" height="1.5" rx=".75" fill="#e8f2ff" opacity=".6"/>
+          <!-- Luz dorada -->
+          <line x1="10" y1=".5" x2="10" y2="0" stroke="#ffe97a" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="14" y1="2" x2="15.3" y2=".7" stroke="#ffe97a" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+          <line x1="6"  y1="2" x2="4.7"  y2=".7" stroke="#ffe97a" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+        </svg>
+        <span id="logo-txt"><span class="w">Sol</span><span class="b">Coruña</span></span>
+      </div>
+      <button id="btn-s">☀️ Sorpresa</button>
+    </div>
+
+    <div id="nokey">⚠️ Reemplaza AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ con tu clave real</div>
+
+    <div id="loading">
+      <div class="faro">
+        <div class="fr"></div><div class="fr"></div><div class="fr"></div>
+        <div class="ft"></div><div class="fb"></div>
+      </div>
+      <div id="load-logo"><span class="w">Sol</span><span class="b">Coruña</span></div>
+      <div class="spin"></div>
+      <p id="load-sub">Buscando terrazas...</p>
+    </div>
+
+    <div id="detail">
+      <button id="dcls">✕</button>
+      <div class="dh"></div>
+      <div id="dphoto"></div>
+      <div id="dtype"></div>
+      <div id="dname"></div>
+      <div id="daddr"></div>
+      <div id="drating"></div>
+      <div id="dstatus"></div>
+      <div id="ddesc"></div>
+      <div class="slbl">Ritmo solar estimado</div>
+      <div id="drhythm"></div>
+      <div class="rticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+      <div id="dgrid"></div>
+      <div id="dact">
+        <button class="da-p" id="dnav">🚶 Cómo llegar</button>
+        <button class="da-s" id="dshare">🔗 Compartir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR / BOTTOM PANEL -->
+  <aside id="aside">
+
+    <!-- Logo sidebar (solo desktop) -->
+    <div id="aside-logo">
+      <svg width="22" height="22" viewBox="0 0 20 20" fill="none">
+        <rect x="6.5" y="11" width="7" height="7.5" rx="1.2" fill="#2060d0"/>
+        <rect x="6.5" y="13.5" width="7" height="2" fill="#e8f2ff"/>
+        <rect x="7.5" y="6"  width="5" height="6" rx="1" fill="#2060d0"/>
+        <rect x="7.5" y="8"  width="5" height="2" fill="#e8f2ff" opacity=".7"/>
+        <rect x="8.5" y="1.5" width="3" height="5.5" rx="1" fill="#2060d0"/>
+        <rect x="5.5" y="18.5" width="9" height="1.5" rx=".75" fill="#e8f2ff" opacity=".6"/>
+        <line x1="10" y1=".5" x2="10" y2="0" stroke="#ffe97a" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="14" y1="2" x2="15.3" y2=".7" stroke="#ffe97a" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+        <line x1="6"  y1="2" x2="4.7"  y2=".7" stroke="#ffe97a" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+      </svg>
+      <span id="aside-logo-txt"><span class="w">Sol</span><span class="b">Coruña</span></span>
+    </div>
+
+    <div class="trow">
+      <div id="tdisp">--:--</div>
+      <button id="btn-a">AHORA →</button>
+    </div>
+
+    <div id="pill">☀️ Calculando...</div>
+
+    <input type="range" id="sl" min="0" max="1020" value="510" step="5"/>
+    <div id="sl-l">
+      <span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span><span>23</span>
+    </div>
+
+    <div id="qrow">
+      <button class="qb on" data-t="now">Ahora</button>
+      <button class="qb" data-t="9:00">Desayuno</button>
+      <button class="qb" data-t="12:30">Vermut</button>
+      <button class="qb" data-t="16:00">Caña</button>
+      <button class="qb" data-t="14:00">Comida</button>
+      <button class="qb" data-t="21:30">Cena</button>
+    </div>
+
+    <!-- Botón caña discreto -->
+    <!-- Reemplaza angelgongar con tu usuario de ko-fi.com -->
+    <div id="cana-wrap">
+      <a id="btn-cana" href="https://ko-fi.com/angelgongar" target="_blank" rel="noopener">
+        <span>🍺</span><span>Invítame a una caña</span>
+      </a>
+    </div>
+
+    <p id="aside-foot">
+      Datos: OSM · Google Maps<br>
+      Sombras en tiempo real
+    </p>
+
+  </aside>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════
+const CFG={lat:43.3623,lng:-8.4115,zoom:15,bbox:'43.33,-8.46,43.395,-8.37',defH:14,checkR:90,angTol:.44,searchR:2000};
+let map,ps,venues=[],buildings=[],overlays=[],now=new Date(),sel=null;
+
+// ── Geo ──
+const toR=d=>d*Math.PI/180;
+function distM(a,b){const dl=toR(b.lat-a.lat),dg=toR(b.lng-a.lng),x=Math.sin(dl/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dg/2)**2;return 6371000*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function brng(a,b){const dl=toR(b.lng-a.lng);return Math.atan2(Math.sin(dl)*Math.cos(toR(b.lat)),Math.cos(toR(a.lat))*Math.sin(toR(b.lat))-Math.sin(toR(a.lat))*Math.cos(toR(b.lat))*Math.cos(dl));}
+function adiff(a,b){let d=Math.abs(a-b)%(2*Math.PI);return d>Math.PI?2*Math.PI-d:d;}
+
+// ── Shadow ──
+function isInSun(v,date){
+  const s=SunCalc.getPosition(date,v.lat,v.lng);
+  if(s.altitude<.06)return false;
+  for(const b of(v._near||[])){const len=b.h/Math.tan(s.altitude),d=distM(b,v);if(d<1||d>len)continue;if(adiff(brng(b,v),s.azimuth)<CFG.angTol)return false;}
+  return true;
+}
+function rhythm(v){const base=new Date(now);base.setHours(0,0,0,0);return Array.from({length:48},(_,i)=>isInSun(v,new Date(base.getTime()+i*30*60000)));}
+function nextSun(v){for(let m=30;m<=360;m+=30){const t=new Date(now.getTime()+m*60000);if(isInSun(v,t))return pad(t.getHours())+':'+pad(t.getMinutes());}return null;}
+const pad=n=>String(n).padStart(2,'0');
+const cap=s=>s?s[0].toUpperCase()+s.slice(1):'?';
+function starsHTML(r){if(!r)return'';const f=Math.floor(r);return'★'.repeat(f)+(r-f>=.5?'½':'')+' '+r.toFixed(1);}
+
+// ── Google Maps dark-blue Atlantic style ──
+const STYLE=[
+  {elementType:'geometry',stylers:[{color:'#07101e'}]},
+  {elementType:'labels.text.stroke',stylers:[{color:'#07101e'}]},
+  {elementType:'labels.text.fill',stylers:[{color:'#3d6090'}]},
+  {featureType:'administrative.locality',elementType:'labels.text.fill',stylers:[{color:'#5a8ab8'}]},
+  {featureType:'administrative.neighborhood',elementType:'labels.text.fill',stylers:[{color:'#456080'}]},
+  {featureType:'poi',elementType:'labels',stylers:[{visibility:'off'}]},
+  {featureType:'poi.park',elementType:'geometry',stylers:[{color:'#081814'}]},
+  {featureType:'road',elementType:'geometry',stylers:[{color:'#0e2040'}]},
+  {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#091830'}]},
+  {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#305070'}]},
+  {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#163060'}]},
+  {featureType:'road.highway',elementType:'geometry.stroke',stylers:[{color:'#102248'}]},
+  {featureType:'transit',elementType:'geometry',stylers:[{color:'#0c1c38'}]},
+  /* Agua: azul atlántico oscuro pero distinguible */
+  {featureType:'water',elementType:'geometry',stylers:[{color:'#040e22'}]},
+  {featureType:'water',elementType:'labels.text.fill',stylers:[{color:'#2060a0'}]},
+];
+
+// ── OSM buildings ──
+async function loadBuildings(){
+  try{
+    const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(`[out:json][timeout:25];way["building"](${CFG.bbox});out center tags;`));
+    const d=await r.json();
+    buildings=d.elements.filter(e=>e.center).map(e=>{
+      let h=CFG.defH;const t=e.tags||{};
+      if(t.height){const v=parseFloat(t.height);if(!isNaN(v))h=v;}
+      else if(t['building:levels']){const v=parseFloat(t['building:levels']);if(!isNaN(v))h=v*3.2;}
+      return{lat:e.center.lat,lng:e.center.lon,h};
+    });
+  }catch(e){console.warn('Buildings:',e);}
+}
+
+// ── Google Places ──
+function searchType(type){
+  return new Promise(resolve=>{
+    const all=[];
+    function handle(res,status,pg){if(status==='OK'&&res){all.push(...res);if(pg?.hasNextPage)setTimeout(()=>pg.nextPage(),2200);else resolve(all);}else resolve(all);}
+    ps.nearbySearch({location:new google.maps.LatLng(CFG.lat,CFG.lng),radius:CFG.searchR,type},handle);
+  });
+}
+async function loadVenues(){
+  const[bars,cafes,rests]=await Promise.all(['bar','cafe','restaurant'].map(searchType));
+  const seen=new Set();
+  venues=[...bars,...cafes,...rests].filter(p=>{if(seen.has(p.place_id))return false;seen.add(p.place_id);return true;}).map(p=>({
+    id:p.place_id,lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),
+    name:p.name,type:(p.types||[]).find(t=>['bar','cafe','restaurant','pub'].includes(t))||'bar',
+    addr:p.vicinity||'A Coruña',rating:p.rating||null,ratingN:p.user_ratings_total||0,
+    photo:p.photos?.[0]||null,openNow:p.opening_hours?.isOpen?.()??null,_near:null,_sun:false,
+  }));
+  venues.forEach(v=>{v._near=buildings.filter(b=>distM(b,v)<CFG.checkR);});
+}
+
+// ── Markers ──
+function mkClass(){
+  return class extends google.maps.OverlayView{
+    constructor(v){super();this.v=v;this.el=null;}
+    onAdd(){this.el=document.createElement('div');this.el.className='mk';this.el.addEventListener('click',e=>{e.stopPropagation();openDetail(this.v);});this.getPanes().overlayMouseTarget.appendChild(this.el);}
+    draw(){const pos=this.getProjection()?.fromLatLngToDivPixel(new google.maps.LatLng(this.v.lat,this.v.lng));if(!pos||!this.el)return;const sz=this.v._sun?28:15;this.el.className='mk '+(this.v._sun?'mk-sun':'mk-shade');this.el.style.cssText=`width:${sz}px;height:${sz}px;left:${pos.x}px;top:${pos.y}px;`;}
+    onRemove(){this.el?.parentNode?.removeChild(this.el);}
+  };
+}
+function repaint(){
+  let n=0;
+  venues.forEach((v,i)=>{v._sun=isInSun(v,now);if(v._sun)n++;overlays[i]?.draw();});
+  const sun=SunCalc.getPosition(now,CFG.lat,CFG.lng);
+  const p=document.getElementById('pill');
+  if(sun.altitude<.06){p.className='night';p.textContent='🌙 Noche · vuelve mañana';}
+  else{p.className='';p.textContent=`☀️ ${n} terrazas al sol ahora`;}
+}
+
+// ── Detail panel ──
+const TL={bar:'Bar',cafe:'Cafetería',restaurant:'Restaurante',pub:'Pub',night_club:'Club'};
+function openDetail(v){
+  sel=v;
+  const ph=document.getElementById('dphoto');
+  if(v.photo){ph.style.backgroundImage=`url(${v.photo.getUrl({maxWidth:700,maxHeight:200})})`;ph.style.display='block';}
+  else ph.style.display='none';
+  document.getElementById('dtype').textContent=(TL[v.type]||cap(v.type))+' · A CORUÑA';
+  document.getElementById('dname').textContent=v.name;
+  document.getElementById('daddr').textContent=v.addr;
+  const rEl=document.getElementById('drating');
+  if(v.rating){rEl.innerHTML=`<span class="stars">${starsHTML(v.rating)}</span><span style="color:var(--mut);font-size:12px">(${v.ratingN.toLocaleString('es-ES')} opiniones)</span>`;rEl.style.display='flex';}
+  else rEl.style.display='none';
+  const sun=SunCalc.getPosition(now,v.lat,v.lng);
+  if(v._sun){document.getElementById('dstatus').innerHTML='☀️ Al sol';document.getElementById('ddesc').textContent='Esta terraza recibe sol directo ahora mismo.';}
+  else if(sun.altitude<.06){document.getElementById('dstatus').innerHTML='🌙 Noche';document.getElementById('ddesc').textContent='El sol ya se ha puesto. Consulta otra hora.';}
+  else{document.getElementById('dstatus').innerHTML='☁️ Sombra';const nx=nextSun(v);document.getElementById('ddesc').textContent=nx?`A la sombra. Próximo sol estimado a las ${nx}.`:'A la sombra. No le dará más sol antes del ocaso.';}
+  const rh=rhythm(v),slot=Math.floor((now.getHours()*60+now.getMinutes())/30);
+  document.getElementById('drhythm').innerHTML=rh.map((s,i)=>`${i===slot?'<div class="rs now"></div>':''}<div class="rs${s?' s':''}"></div>`).join('');
+  const oc=v.openNow===true?'var(--grn)':v.openNow===false?'var(--red)':'var(--txt)';
+  const os=v.openNow===true?'✓ Abierto':v.openNow===false?'✗ Cerrado':'—';
+  document.getElementById('dgrid').innerHTML=`<div class="dc"><div class="dcl">Tipo</div><div class="dcv">${TL[v.type]||cap(v.type)}</div></div><div class="dc"><div class="dcl">Estado</div><div class="dcv" style="color:${oc}">${os}</div></div>`;
+  document.getElementById('dnav').onclick=()=>window.open(`https://www.google.com/maps/place/?q=place_id:${v.id}`,'_blank');
+  document.getElementById('dshare').onclick=()=>{
+    const txt=`${v.name} está ${v._sun?'al sol ☀️':'en sombra ☁️'} en A Coruña\n${v.addr}\nsolcoruna.vercel.app`;
+    navigator.share?navigator.share({title:v.name,text:txt}):navigator.clipboard?.writeText(txt).then(()=>alert('¡Copiado!'));
+  };
+  document.getElementById('detail').classList.add('open');
+  map.panTo({lat:v.lat,lng:v.lng});
+}
+function closeDetail(){document.getElementById('detail').classList.remove('open');sel=null;}
+
+// ── Time controls ──
+function setTime(d){
+  now=d;
+  const m=now.getHours()*60+now.getMinutes(),sv=Math.max(0,Math.min(1020,m-360));
+  const sl=document.getElementById('sl');sl.value=sv;sl.style.setProperty('--p',(sv/1020*100).toFixed(1)+'%');
+  document.getElementById('tdisp').textContent=pad(now.getHours())+':'+pad(now.getMinutes());
+  if(venues.length)repaint();
+  if(sel)openDetail(sel);
+}
+function offAll(){document.querySelectorAll('.qb').forEach(b=>b.classList.remove('on'));}
+
+// ── initMap (Google Maps callback) ──
+async function initMap(){
+  if(document.querySelector('script[src*="maps.googleapis"]')?.src.includes('AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ'))
+    document.getElementById('nokey').style.display='block';
+
+  const Overlay=mkClass();
+  map=new google.maps.Map(document.getElementById('map'),{
+    center:{lat:CFG.lat,lng:CFG.lng},zoom:CFG.zoom,
+    styles:STYLE,disableDefaultUI:true,gestureHandling:'greedy',clickableIcons:false,
+  });
+  ps=new google.maps.places.PlacesService(map);
+
+  const gb=document.createElement('button');
+  gb.id='btn-geo';gb.style.bottom='210px';gb.textContent='◎';gb.title='Mi ubicación';
+  document.getElementById('mapwrap').appendChild(gb);
+  gb.addEventListener('click',()=>{navigator.geolocation?.getCurrentPosition(p=>{map.setCenter({lat:p.coords.latitude,lng:p.coords.longitude});map.setZoom(16);},()=>alert('No se pudo obtener tu ubicación.'));});
+
+  function updateGeoPos(){gb.style.bottom=window.innerWidth>=768?'20px':'210px';}
+  updateGeoPos();window.addEventListener('resize',updateGeoPos);
+
+  document.getElementById('sl').addEventListener('input',e=>{const tot=360+parseInt(e.target.value),d=new Date(now);d.setHours(Math.floor(tot/60)%24,tot%60,0,0);offAll();setTime(d);});
+  document.querySelectorAll('.qb').forEach(btn=>{btn.addEventListener('click',()=>{offAll();btn.classList.add('on');if(btn.dataset.t==='now'){setTime(new Date());return;}const[h,m]=btn.dataset.t.split(':').map(Number),d=new Date(now);d.setHours(h,m,0,0);setTime(d);});});
+  document.getElementById('btn-a').addEventListener('click',()=>{offAll();document.querySelector('[data-t="now"]').classList.add('on');setTime(new Date());});
+  document.getElementById('btn-s').addEventListener('click',()=>{const s=venues.filter(v=>v._sun);if(!s.length){alert('No hay terrazas al sol ahora 😔');return;}openDetail(s[Math.floor(Math.random()*s.length)]);});
+  document.getElementById('dcls').addEventListener('click',closeDetail);
+  map.addListener('click',closeDetail);
+
+  setTime(new Date());
+
+  try{
+    document.getElementById('load-sub').textContent='Cargando edificios...';
+    await loadBuildings();
+    document.getElementById('load-sub').textContent='Buscando terrazas en Google Maps...';
+    await loadVenues();
+    document.getElementById('load-sub').textContent=venues.length+' terrazas encontradas';
+    venues.forEach(v=>{const ov=new Overlay(v);ov.setMap(map);overlays.push(ov);});
+    repaint();
+    const ld=document.getElementById('loading');ld.style.transition='opacity .5s';ld.style.opacity='0';setTimeout(()=>ld.style.display='none',500);
+  }catch(err){
+    console.error(err);
+    document.getElementById('load-sub').textContent='⚠️ Error. Reintentando en 5s...';
+    setTimeout(initMap,5000);return;
+  }
+  setInterval(()=>{if(document.querySelector('.qb.on')?.dataset.t==='now')setTime(new Date());},60000);
+}
+</script>
+</body>
+</html>
