@@ -19,14 +19,14 @@
   ║  PARA ACTIVAR EL MAPA:                                     ║
   ║  1. Ve a console.cloud.google.com                          ║
   ║  2. Activa Maps JavaScript API + Places API                ║
-  ║  3. Reemplaza AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ con tu clave                  ║
+  ║  3. Reemplaza GOOGLE_API_KEY con tu clave                  ║
   ║                                                            ║
   ║  PARA EL BOTÓN DE CAÑA:                                    ║
-  ║  Crea cuenta en ko-fi.com → reemplaza angelgongar           ║
+  ║  Crea cuenta en ko-fi.com → reemplaza KO_FI_USER           ║
   ╚════════════════════════════════════════════════════════════╝
   -->
   <script async defer
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ&libraries=places&callback=initMap&loading=async">
+    src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_API_KEY&libraries=places&callback=initMap&loading=async">
   </script>
   <style>
     /* ═══════════════════════════════
@@ -349,7 +349,7 @@
       <button id="btn-s">☀️ Sorpresa</button>
     </div>
 
-    <div id="nokey">⚠️ Reemplaza AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ con tu clave real</div>
+    <div id="nokey">⚠️ Reemplaza GOOGLE_API_KEY con tu clave real</div>
 
     <div id="loading">
       <div class="faro">
@@ -423,9 +423,9 @@
     </div>
 
     <!-- Botón caña discreto -->
-    <!-- Reemplaza angelgongar con tu usuario de ko-fi.com -->
+    <!-- Reemplaza KO_FI_USER con tu usuario de ko-fi.com -->
     <div id="cana-wrap">
-      <a id="btn-cana" href="https://ko-fi.com/angelgongar" target="_blank" rel="noopener">
+      <a id="btn-cana" href="https://ko-fi.com/KO_FI_USER" target="_blank" rel="noopener">
         <span>🍺</span><span>Invítame a una caña</span>
       </a>
     </div>
@@ -442,7 +442,7 @@
 // ═══════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════
-const CFG={lat:43.3623,lng:-8.4115,zoom:15,bbox:'43.33,-8.46,43.395,-8.37',defH:14,checkR:90,angTol:.44,searchR:2000};
+const CFG={lat:43.3623,lng:-8.4115,zoom:15,bbox:'43.33,-8.46,43.395,-8.37',defH:14,checkR:200,angTol:.28,searchR:2000};
 let map,ps,venues=[],buildings=[],overlays=[],now=new Date(),sel=null;
 
 // ── Geo ──
@@ -455,7 +455,14 @@ function adiff(a,b){let d=Math.abs(a-b)%(2*Math.PI);return d>Math.PI?2*Math.PI-d
 function isInSun(v,date){
   const s=SunCalc.getPosition(date,v.lat,v.lng);
   if(s.altitude<.06)return false;
-  for(const b of(v._near||[])){const len=b.h/Math.tan(s.altitude),d=distM(b,v);if(d<1||d>len)continue;if(adiff(brng(b,v),s.azimuth)<CFG.angTol)return false;}
+  const shadowDir=s.azimuth+Math.PI;
+  for(const b of(v._near||[])){
+    const d=distM(b,v);
+    if(d<1)continue;
+    const len=b.h/Math.tan(s.altitude);
+    if(d>len)continue;
+    if(adiff(brng(b,v),shadowDir)<CFG.angTol)return false;
+  }
   return true;
 }
 function rhythm(v){const base=new Date(now);base.setHours(0,0,0,0);return Array.from({length:48},(_,i)=>isInSun(v,new Date(base.getTime()+i*30*60000)));}
@@ -581,7 +588,8 @@ function offAll(){document.querySelectorAll('.qb').forEach(b=>b.classList.remove
 
 // ── initMap (Google Maps callback) ──
 async function initMap(){
-
+  if(document.querySelector('script[src*="maps.googleapis"]')?.src.includes('GOOGLE_API_KEY'))
+    document.getElementById('nokey').style.display='block';
 
   const Overlay=mkClass();
   map=new google.maps.Map(document.getElementById('map'),{
