@@ -581,8 +581,7 @@ function offAll(){document.querySelectorAll('.qb').forEach(b=>b.classList.remove
 
 // ── initMap (Google Maps callback) ──
 async function initMap(){
-  if(document.querySelector('script[src*="maps.googleapis"]')?.src.includes('AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ'))
-    document.getElementById('nokey').style.display='block';
+
 
   const Overlay=mkClass();
   map=new google.maps.Map(document.getElementById('map'),{
