@@ -14,19 +14,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+  <script src="https://unpkg.com/mapbox-gl-shadow-simulator/dist/mapbox-gl-shadow-simulator.umd.min.js"></script>
   <!--
   ╔════════════════════════════════════════════════════════════╗
   ║  PARA ACTIVAR EL MAPA:                                     ║
   ║  1. Ve a console.cloud.google.com                          ║
   ║  2. Activa Maps JavaScript API + Places API                ║
-  ║  3. Reemplaza AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ con tu clave                  ║
+  ║  3. Reemplaza GOOGLE_API_KEY con tu clave                  ║
   ║                                                            ║
   ║  PARA EL BOTÓN DE CAÑA:                                    ║
   ║  Crea cuenta en ko-fi.com → reemplaza KO_FI_USER           ║
   ╚════════════════════════════════════════════════════════════╝
   -->
   <script async defer
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ&libraries=places&callback=initMap&loading=async">
+    src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_API_KEY&libraries=places&callback=initMap&loading=async">
   </script>
   <style>
     /* ═══════════════════════════════
@@ -349,7 +350,7 @@
       <button id="btn-s">☀️ Sorpresa</button>
     </div>
 
-    <div id="nokey">⚠️ Reemplaza AIzaSyDlYPJQxl_g6Ri4yTO8IiGlWWgFo_i2kYQ con tu clave real</div>
+    <div id="nokey">⚠️ Reemplaza GOOGLE_API_KEY con tu clave real</div>
 
     <div id="loading">
       <div class="faro">
@@ -443,7 +444,7 @@
 // CONFIG
 // ═══════════════════════════════════════
 const CFG={lat:43.3623,lng:-8.4115,zoom:15,bbox:'43.33,-8.46,43.395,-8.37',defH:14,checkR:100,angTol:.28,searchR:2000};
-let map,ps,venues=[],buildings=[],overlays=[],now=new Date(),sel=null;
+let map,ps,shadeMap=null,venues=[],buildings=[],overlays=[],now=new Date(),sel=null;
 
 // ── Geo ──
 const toR=d=>d*Math.PI/180;
@@ -452,18 +453,40 @@ function brng(a,b){const dl=toR(b.lng-a.lng);return Math.atan2(Math.sin(dl)*Math
 function adiff(a,b){let d=Math.abs(a-b)%(2*Math.PI);return d>Math.PI?2*Math.PI-d:d;}
 
 // ── Shadow ──
-function isInSun(v,date){
+function isInSunSunCalc(v,date){
   const s=SunCalc.getPosition(date,v.lat,v.lng);
   if(s.altitude<.06)return false;
   const shadowDir=s.azimuth+Math.PI;
   for(const b of(v._near||[])){
-    const d=distM(b,v);
-    if(d<1)continue;
-    const len=b.h/Math.tan(s.altitude);
-    if(d>len)continue;
+    const d=distM(b,v);if(d<1)continue;
+    const len=b.h/Math.tan(s.altitude);if(d>len)continue;
     if(adiff(brng(b,v),shadowDir)<CFG.angTol)return false;
   }
   return true;
+}
+// Cache de resultados ShadeMap por venue+hora
+const smCache=new Map();
+async function checkShadeMapBatch(vlist,date){
+  if(!shadeMap)return;
+  shadeMap.setDate(date);
+  await new Promise(r=>shadeMap.on('idle',r));
+  for(const v of vlist){
+    const pt=map.getProjection()?.fromLatLngToPoint(new google.maps.LatLng(v.lat,v.lng));
+    if(!pt)continue;
+    const key=v.id+'_'+date.getHours()+'_'+Math.floor(date.getMinutes()/30);
+    try{
+      const r=await shadeMap.isPositionInSun(pt.x,pt.y);
+      smCache.set(key,r);
+    }catch(e){}
+  }
+}
+function isInSun(v,date){
+  const sun=SunCalc.getPosition(date,v.lat,v.lng);
+  if(sun.altitude<.06)return false;
+  const key=v.id+'_'+date.getHours()+'_'+Math.floor(date.getMinutes()/30);
+  if(smCache.has(key))return smCache.get(key);
+  // Fallback a SunCalc con edificios si ShadeMap no está listo
+  return isInSunSunCalc(v,date);
 }
 function rhythm(v){const base=new Date(now);base.setHours(0,0,0,0);return Array.from({length:48},(_,i)=>isInSun(v,new Date(base.getTime()+i*30*60000)));}
 function nextSun(v){for(let m=30;m<=360;m+=30){const t=new Date(now.getTime()+m*60000);if(isInSun(v,t))return pad(t.getHours())+':'+pad(t.getMinutes());}return null;}
@@ -493,6 +516,7 @@ const STYLE=[
 
 // ── OSM buildings ──
 async function loadBuildings(){
+  // Intentar cargar edificios desde Overpass (para SunCalc fallback)
   const q=encodeURIComponent(`[out:json][timeout:20];way["building"](${CFG.bbox});out center tags;`);
   const endpoints=[
     'https://overpass.kumi.systems/api/interpreter?data='+q,
@@ -501,7 +525,7 @@ async function loadBuildings(){
   ];
   for(const url of endpoints){
     try{
-      const r=await fetch(url,{signal:AbortSignal.timeout(12000)});
+      const r=await fetch(url,{signal:AbortSignal.timeout(10000)});
       if(!r.ok)continue;
       const d=await r.json();
       buildings=d.elements.filter(e=>e.center).map(e=>{
@@ -510,11 +534,36 @@ async function loadBuildings(){
         else if(t['building:levels']){const v=parseFloat(t['building:levels']);if(!isNaN(v))h=v*3.2;}
         return{lat:e.center.lat,lng:e.center.lon,h};
       });
-      console.log('Buildings OK:',buildings.length,'desde',url);
-      return;
-    }catch(e){console.warn('Overpass fallback:',url,e.message);}
+      console.log('Buildings OK:',buildings.length);
+      break;
+    }catch(e){console.warn('Overpass:',e.message);}
   }
-  console.warn('Sin datos de edificios, sombras desactivadas');
+  // Inicializar ShadeMap (funciona independientemente de Overpass)
+  try{
+    if(typeof ShadeMap!=='undefined'){
+      shadeMap=new ShadeMap({
+        date:now,
+        apiKey:'eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImFuZ2VsZ29uZ2FycHM0QGdtYWlsLmNvbSIsImNyZWF0ZWQiOjE3Nzg5NzM5NzUyMDIsImlhdCI6MTc3ODk3Mzk3NX0.NRK94QbOAcXgIoHPtoZNeunQTzGOEpccvK6MY6M1USQ',
+        terrainSource:{
+          tileSize:256,maxZoom:15,
+          getSourceUrl:({x,y,z})=>`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,
+          getElevation:({r,g,b})=>(r*256+g+b/256)-32768,
+        },
+        getFeatures:()=>{
+          // Usar edificios de OSM si están disponibles
+          if(buildings.length){
+            return buildings.map(b=>({
+              type:'Feature',
+              properties:{height:b.h},
+              geometry:{type:'Point',coordinates:[b.lng,b.lat]}
+            }));
+          }
+          return [];
+        },
+      }).addTo(map);
+      console.log('ShadeMap OK');
+    }
+  }catch(e){console.warn('ShadeMap init:',e);}
 }
 
 // ── Google Places ──
