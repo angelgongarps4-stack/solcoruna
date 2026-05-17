@@ -515,51 +515,89 @@ async function loadBuildings(){
 }
 
 // ── Google Places ──
-// Zonas de búsqueda: 4 zonas con radio amplio cubren toda A Coruña
-const ZONES=[
-  {lat:43.3710,lng:-8.3980}, // Ciudad Vieja + Pescadería + Ensanche norte
-  {lat:43.3630,lng:-8.4120}, // Centro + Cuatro Caminos + Agra del Orzán
-  {lat:43.3680,lng:-8.4220}, // Matogrande + Monte Alto oeste
-  {lat:43.3580,lng:-8.3980}, // Los Castros + Riazor + Orzán
-];
+// Terrazas de A Coruña desde OpenStreetMap (outdoor_seating=yes)
+async function loadVenuesOSM(){
+  const q=encodeURIComponent(`[out:json][timeout:25];node["amenity"~"^(bar|cafe|restaurant|pub)$"]["outdoor_seating"="yes"](43.33,-8.46,43.40,-8.37);out body;`);
+  const endpoints=[
+    'https://overpass.kumi.systems/api/interpreter?data='+q,
+    'https://lz4.overpass-api.de/api/interpreter?data='+q,
+    'https://z.overpass-api.de/api/interpreter?data='+q,
+  ];
+  for(const url of endpoints){
+    try{
+      const r=await fetch(url,{signal:AbortSignal.timeout(10000)});
+      if(!r.ok)continue;
+      const d=await r.json();
+      const osm=d.elements.filter(e=>e.lat&&e.lon).map(e=>({
+        id:'osm_'+e.id,
+        lat:e.lat,lng:e.lon,
+        name:e.tags?.name||'Terraza sin nombre',
+        type:e.tags?.amenity||'bar',
+        addr:(e.tags?.['addr:street']||'')+(e.tags?.['addr:housenumber']?' '+e.tags['addr:housenumber']:'') || 'A Coruña',
+        rating:null,ratingN:0,photo:null,
+        openNow:null,terraza:true,
+        _near:null,_sun:false,
+      }));
+      console.log('Terrazas OSM:',osm.length);
+      return osm;
+    }catch(e){console.warn('OSM terrazas:',e.message);}
+  }
+  return [];
+}
 
-function searchZoneType(zone,type){
+// Google Places para enriquecer con fotos y ratings
+function searchGooglePlace(name,lat,lng){
   return new Promise(resolve=>{
-    const all=[];
-    function handle(res,status,pg){
-      if(status==='OK'&&res){
-        all.push(...res);
-        if(pg?.hasNextPage)setTimeout(()=>pg.nextPage(),2200);
-        else resolve(all);
-      }else resolve(all);
-    }
-    ps.nearbySearch({location:new google.maps.LatLng(zone.lat,zone.lng),radius:1400,type},handle);
+    ps.nearbySearch({
+      location:new google.maps.LatLng(lat,lng),
+      radius:50,
+      keyword:name,
+    },(res,status)=>{
+      if(status==='OK'&&res?.length)resolve(res[0]);
+      else resolve(null);
+    });
   });
 }
 
 async function loadVenues(){
-  const seen=new Set();
-  const allResults=[];
-  // Buscamos secuencialmente por zona para no saturar la API
-  for(const zone of ZONES){
-    const[bars,cafes,rests]=await Promise.all(
-      ['bar','cafe','restaurant'].map(t=>searchZoneType(zone,t))
-    );
-    allResults.push(...bars,...cafes,...rests);
-    // Pequeña pausa entre zonas
-    await new Promise(r=>setTimeout(r,200));
+  // 1. Cargar terrazas desde OSM (con outdoor_seating=yes)
+  const osmVenues = await loadVenuesOSM();
+  
+  // 2. Si OSM no devuelve nada (CORS bloqueado), usar Google Places filtrado
+  if(osmVenues.length===0){
+    console.log('OSM bloqueado, usando Google Places...');
+    const seen=new Set();
+    const allResults=[];
+    const ZONES=[
+      {lat:43.3710,lng:-8.3980},
+      {lat:43.3630,lng:-8.4120},
+      {lat:43.3680,lng:-8.4220},
+      {lat:43.3580,lng:-8.3980},
+    ];
+    for(const zone of ZONES){
+      await new Promise(resolve=>{
+        ps.nearbySearch({location:new google.maps.LatLng(zone.lat,zone.lng),radius:1400,keyword:'terraza',type:'bar'},(res,status,pg)=>{
+          if(status==='OK'&&res)allResults.push(...res);
+          resolve();
+        });
+      });
+      await new Promise(r=>setTimeout(r,200));
+    }
+    venues=allResults.filter(p=>{
+      if(seen.has(p.place_id))return false;seen.add(p.place_id);return true;
+    }).map(p=>({
+      id:p.place_id,lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),
+      name:p.name,type:'bar',addr:p.vicinity||'A Coruña',
+      rating:p.rating||null,ratingN:p.user_ratings_total||0,
+      photo:p.photos?.[0]||null,openNow:p.opening_hours?.isOpen?.()??null,
+      terraza:true,_near:null,_sun:false,
+    }));
+  } else {
+    venues=osmVenues;
   }
-  venues=allResults.filter(p=>{
-    if(seen.has(p.place_id))return false;
-    seen.add(p.place_id);
-    return true;
-  }).map(p=>({
-    id:p.place_id,lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),
-    name:p.name,type:(p.types||[]).find(t=>['bar','cafe','restaurant','pub'].includes(t))||'bar',
-    addr:p.vicinity||'A Coruña',rating:p.rating||null,ratingN:p.user_ratings_total||0,
-    photo:p.photos?.[0]||null,openNow:p.opening_hours?.isOpen?.()??null,_near:null,_sun:false,
-  }));
+  
   venues.forEach(v=>{v._near=buildings.filter(b=>distM(b,v)<CFG.checkR);});
+  console.log('Total venues:',venues.length);
 }
 
 // ── Markers ──
