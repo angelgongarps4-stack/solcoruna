@@ -515,16 +515,12 @@ async function loadBuildings(){
 }
 
 // ── Google Places ──
-// Zonas de búsqueda: cubrimos toda A Coruña con un grid de puntos
+// Zonas de búsqueda: 4 zonas con radio amplio cubren toda A Coruña
 const ZONES=[
-  {lat:43.3710,lng:-8.3960}, // Ciudad Vieja / Pescadería
-  {lat:43.3680,lng:-8.4050}, // Centro / Ensanche
-  {lat:43.3620,lng:-8.4120}, // Cuatro Caminos / Los Castros
-  {lat:43.3580,lng:-8.4200}, // Agra del Orzán
-  {lat:43.3650,lng:-8.3980}, // Orzán / Riazor
-  {lat:43.3750,lng:-8.4080}, // Monte Alto
-  {lat:43.3560,lng:-8.4050}, // Mesoiro / Santa Margarita
-  {lat:43.3700,lng:-8.4200}, // Matogrande
+  {lat:43.3710,lng:-8.3980}, // Ciudad Vieja + Pescadería + Ensanche norte
+  {lat:43.3630,lng:-8.4120}, // Centro + Cuatro Caminos + Agra del Orzán
+  {lat:43.3680,lng:-8.4220}, // Matogrande + Monte Alto oeste
+  {lat:43.3580,lng:-8.3980}, // Los Castros + Riazor + Orzán
 ];
 
 function searchZoneType(zone,type){
@@ -537,7 +533,7 @@ function searchZoneType(zone,type){
         else resolve(all);
       }else resolve(all);
     }
-    ps.nearbySearch({location:new google.maps.LatLng(zone.lat,zone.lng),radius:900,type},handle);
+    ps.nearbySearch({location:new google.maps.LatLng(zone.lat,zone.lng),radius:1400,type},handle);
   });
 }
 
@@ -551,7 +547,7 @@ async function loadVenues(){
     );
     allResults.push(...bars,...cafes,...rests);
     // Pequeña pausa entre zonas
-    await new Promise(r=>setTimeout(r,300));
+    await new Promise(r=>setTimeout(r,200));
   }
   venues=allResults.filter(p=>{
     if(seen.has(p.place_id))return false;
