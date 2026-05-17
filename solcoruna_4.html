@@ -251,6 +251,10 @@
     .dcl{color:var(--mut);font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
     .dcv{font-size:14px;font-weight:600;color:var(--blanco)}
 
+    #dterraza{margin-top:4px}
+    .dt-btn{flex:1;background:var(--surf);border:1px solid var(--bord);color:var(--txt);padding:11px;border-radius:12px;font-size:13px;font-family:inherit;cursor:pointer;transition:background .15s}
+    .dt-btn:hover{background:rgba(30,80,200,.15);border-color:var(--azul-l)}
+    .dt-btn.activo{background:var(--azul);border-color:var(--azul);color:#fff}
     #dact{display:flex;gap:8px}
     /* Botón primario: azul blanquiazul (no dorado — el dorado es del sol) */
     .da-p{flex:1;background:var(--azul);color:#fff;padding:14px;border-radius:12px;font-size:14px;font-weight:700;font-family:inherit;transition:background .15s}
@@ -378,6 +382,14 @@
       <div id="dact">
         <button class="da-p" id="dnav">🚶 Cómo llegar</button>
         <button class="da-s" id="dshare">🔗 Compartir</button>
+      </div>
+      <div id="dterraza">
+        <p class="slbl" style="margin-top:18px;margin-bottom:8px">¿Tiene terraza exterior?</p>
+        <div style="display:flex;gap:8px">
+          <button class="dt-btn" id="dt-si" onclick="votarTerraza(true)">☀️ Sí tiene</button>
+          <button class="dt-btn" id="dt-no" onclick="votarTerraza(false)">❌ No tiene</button>
+        </div>
+        <p id="dt-gracias" style="display:none;color:var(--mut);font-size:12px;margin-top:8px">¡Gracias por tu aportación!</p>
       </div>
     </div>
   </div>
@@ -515,88 +527,50 @@ async function loadBuildings(){
 }
 
 // ── Google Places ──
-// Terrazas de A Coruña desde OpenStreetMap (outdoor_seating=yes)
-async function loadVenuesOSM(){
-  const q=encodeURIComponent(`[out:json][timeout:25];node["amenity"~"^(bar|cafe|restaurant|pub)$"]["outdoor_seating"="yes"](43.33,-8.46,43.40,-8.37);out body;`);
-  const endpoints=[
-    'https://overpass.kumi.systems/api/interpreter?data='+q,
-    'https://lz4.overpass-api.de/api/interpreter?data='+q,
-    'https://z.overpass-api.de/api/interpreter?data='+q,
-  ];
-  for(const url of endpoints){
-    try{
-      const r=await fetch(url,{signal:AbortSignal.timeout(10000)});
-      if(!r.ok)continue;
-      const d=await r.json();
-      const osm=d.elements.filter(e=>e.lat&&e.lon).map(e=>({
-        id:'osm_'+e.id,
-        lat:e.lat,lng:e.lon,
-        name:e.tags?.name||'Terraza sin nombre',
-        type:e.tags?.amenity||'bar',
-        addr:(e.tags?.['addr:street']||'')+(e.tags?.['addr:housenumber']?' '+e.tags['addr:housenumber']:'') || 'A Coruña',
-        rating:null,ratingN:0,photo:null,
-        openNow:null,terraza:true,
-        _near:null,_sun:false,
-      }));
-      console.log('Terrazas OSM:',osm.length);
-      return osm;
-    }catch(e){console.warn('OSM terrazas:',e.message);}
-  }
-  return [];
-}
+// Búsqueda Google Places en 4 zonas
+const ZONES=[
+  {lat:43.3710,lng:-8.3980},
+  {lat:43.3630,lng:-8.4120},
+  {lat:43.3680,lng:-8.4220},
+  {lat:43.3580,lng:-8.3980},
+];
 
-// Google Places para enriquecer con fotos y ratings
-function searchGooglePlace(name,lat,lng){
+function searchZoneType(zone,type){
   return new Promise(resolve=>{
-    ps.nearbySearch({
-      location:new google.maps.LatLng(lat,lng),
-      radius:50,
-      keyword:name,
-    },(res,status)=>{
-      if(status==='OK'&&res?.length)resolve(res[0]);
-      else resolve(null);
-    });
+    const all=[];
+    function handle(res,status,pg){
+      if(status==='OK'&&res){all.push(...res);if(pg?.hasNextPage)setTimeout(()=>pg.nextPage(),2200);else resolve(all);}
+      else resolve(all);
+    }
+    ps.nearbySearch({location:new google.maps.LatLng(zone.lat,zone.lng),radius:1400,type},handle);
   });
 }
 
 async function loadVenues(){
-  // 1. Cargar terrazas desde OSM (con outdoor_seating=yes)
-  const osmVenues = await loadVenuesOSM();
-  
-  // 2. Si OSM no devuelve nada (CORS bloqueado), usar Google Places filtrado
-  if(osmVenues.length===0){
-    console.log('OSM bloqueado, usando Google Places...');
-    const seen=new Set();
-    const allResults=[];
-    const ZONES=[
-      {lat:43.3710,lng:-8.3980},
-      {lat:43.3630,lng:-8.4120},
-      {lat:43.3680,lng:-8.4220},
-      {lat:43.3580,lng:-8.3980},
-    ];
-    for(const zone of ZONES){
-      await new Promise(resolve=>{
-        ps.nearbySearch({location:new google.maps.LatLng(zone.lat,zone.lng),radius:1400,keyword:'terraza',type:'bar'},(res,status,pg)=>{
-          if(status==='OK'&&res)allResults.push(...res);
-          resolve();
-        });
-      });
-      await new Promise(r=>setTimeout(r,200));
-    }
-    venues=allResults.filter(p=>{
-      if(seen.has(p.place_id))return false;seen.add(p.place_id);return true;
-    }).map(p=>({
-      id:p.place_id,lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),
-      name:p.name,type:'bar',addr:p.vicinity||'A Coruña',
-      rating:p.rating||null,ratingN:p.user_ratings_total||0,
-      photo:p.photos?.[0]||null,openNow:p.opening_hours?.isOpen?.()??null,
-      terraza:true,_near:null,_sun:false,
-    }));
-  } else {
-    venues=osmVenues;
+  const seen=new Set();
+  const allResults=[];
+  for(const zone of ZONES){
+    const[bars,cafes,rests]=await Promise.all(['bar','cafe','restaurant'].map(t=>searchZoneType(zone,t)));
+    allResults.push(...bars,...cafes,...rests);
+    await new Promise(r=>setTimeout(r,200));
   }
-  
-  venues.forEach(v=>{v._near=buildings.filter(b=>distM(b,v)<CFG.checkR);});
+  venues=allResults.filter(p=>{
+    if(seen.has(p.place_id))return false;seen.add(p.place_id);return true;
+  }).map(p=>({
+    id:p.place_id,lat:p.geometry.location.lat(),lng:p.geometry.location.lng(),
+    name:p.name,
+    type:(p.types||[]).find(t=>['bar','cafe','restaurant','pub'].includes(t))||'bar',
+    addr:p.vicinity||'A Coruña',
+    rating:p.rating||null,ratingN:p.user_ratings_total||0,
+    photo:p.photos?.[0]||null,
+    openNow:p.opening_hours?.isOpen?.()??null,
+    terraza:null, // null=sin confirmar, true=confirmada, false=sin terraza
+    _near:null,_sun:false,
+  }));
+  // Marcar como terraza probable los que tienen ciertas palabras en el nombre
+  venues.forEach(v=>{
+    v._near=buildings.filter(b=>distM(b,v)<CFG.checkR);
+  });
   console.log('Total venues:',venues.length);
 }
 
@@ -611,7 +585,8 @@ function mkClass(){
 }
 function repaint(){
   let n=0;
-  venues.forEach((v,i)=>{v._sun=isInSun(v,now);if(v._sun)n++;overlays[i]?.draw();});
+  venues.forEach((v,i)=>{
+    cargarVotoTerraza(v);v._sun=isInSun(v,now);if(v._sun)n++;overlays[i]?.draw();});
   const sun=SunCalc.getPosition(now,CFG.lat,CFG.lng);
   const p=document.getElementById('pill');
   if(sun.altitude<.06){p.className='night';p.textContent='🌙 Noche · vuelve mañana';}
@@ -622,6 +597,11 @@ function repaint(){
 const TL={bar:'Bar',cafe:'Cafetería',restaurant:'Restaurante',pub:'Pub',night_club:'Club'};
 function openDetail(v){
   sel=v;
+  cargarVotoTerraza(v);
+  // Resetear botones
+  document.getElementById('dt-si').classList.toggle('activo',v.terraza===true);
+  document.getElementById('dt-no').classList.toggle('activo',v.terraza===false);
+  document.getElementById('dt-gracias').style.display='none';
   const ph=document.getElementById('dphoto');
   if(v.photo){ph.style.backgroundImage=`url(${v.photo.getUrl({maxWidth:700,maxHeight:200})})`;ph.style.display='block';}
   else ph.style.display='none';
@@ -649,6 +629,29 @@ function openDetail(v){
   map.panTo({lat:v.lat,lng:v.lng});
 }
 function closeDetail(){document.getElementById('detail').classList.remove('open');sel=null;}
+function votarTerraza(tiene){
+  if(!sel)return;
+  sel.terraza=tiene;
+  // Guardar en localStorage para persistir entre sesiones
+  const key='terraza_'+sel.id;
+  localStorage.setItem(key, tiene?'1':'0');
+  // Feedback visual
+  document.getElementById('dt-si').classList.toggle('activo',tiene===true);
+  document.getElementById('dt-no').classList.toggle('activo',tiene===false);
+  document.getElementById('dt-gracias').style.display='block';
+  // Si dice que no tiene terraza, quitar del mapa
+  if(!tiene){
+    const idx=venues.indexOf(sel);
+    if(idx>-1){venues.splice(idx,1);repaint();}
+    setTimeout(closeDetail,1000);
+  }
+}
+function cargarVotoTerraza(v){
+  const key='terraza_'+v.id;
+  const val=localStorage.getItem(key);
+  if(val==='1')v.terraza=true;
+  else if(val==='0')v.terraza=false;
+}
 
 // ── Time controls ──
 function setTime(d){
